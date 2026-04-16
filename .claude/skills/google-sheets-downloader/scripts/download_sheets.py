@@ -22,16 +22,16 @@ except ImportError as e:
     sys.exit(1)
 
 
-def download_first_column(spreadsheet_id, service_account_path):
+def download_seven_columns(spreadsheet_id, service_account_path):
     """
-    Download the first column from the first sheet of a Google Sheet.
+    Download the first 7 columns (A through G) from the first sheet of a Google Sheet.
 
     Args:
         spreadsheet_id: The ID of the Google Sheet
         service_account_path: Path to the service account JSON file
 
     Returns:
-        List of values from the first column, or None if error occurs
+        List of rows with 7 columns each, or None if error occurs
     """
     # Validate inputs
     if not spreadsheet_id or not isinstance(spreadsheet_id, str):
@@ -95,9 +95,9 @@ def download_first_column(spreadsheet_id, service_account_path):
     except (KeyError, IndexError) as e:
         raise ValueError(f"Unable to determine first sheet name: {str(e)}")
 
-    # Fetch values from the first column (A:A) of the first sheet
+    # Fetch values from the first 7 columns (A:G) of the first sheet
     try:
-        range_name = f"'{first_sheet_name}'!A:A"
+        range_name = f"'{first_sheet_name}'!A:G"
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
             range=range_name
@@ -108,15 +108,19 @@ def download_first_column(spreadsheet_id, service_account_path):
         raise RuntimeError(f"Failed to retrieve column values: {str(e)}")
 
     # Extract values - the result has 'values' key which is a list of rows
-    # Since we're getting column A, each row is a list with one element
+    # Each row is a list that may contain up to 7 elements
     values = result.get('values', [])
     if not values:
         return []
 
-    # Flatten the list (convert [[val1], [val2], ...] to [val1, val2, ...])
+    # Ensure each row has 7 columns (pad with empty strings if needed)
     try:
-        flattened = [row[0] if row else '' for row in values]
-        return flattened
+        formatted_rows = []
+        for row in values:
+            # Pad row to 7 columns with empty strings
+            padded_row = row + [''] * (7 - len(row)) if row else [''] * 7
+            formatted_rows.append(padded_row[:7])  # Ensure max 7 columns
+        return formatted_rows
     except Exception as e:
         raise RuntimeError(f"Failed to process column data: {str(e)}")
 
@@ -132,59 +136,133 @@ def main():
     service_account_path = sys.argv[2]
 
     try:
-        column_data = download_first_column(spreadsheet_id, service_account_path)
+        rows_data = download_seven_columns(spreadsheet_id, service_account_path)
+
+        # Define column headers
+        headers = ["First Name", "Last Name", "Id", "City", "Latitude", "Longitude", "Temperature"]
 
         # Print readable output to console
-        print("\n" + "="*60)
-        print("📊 FIRST COLUMN DATA FROM GOOGLE SHEET")
-        print("="*60)
-        print(f"Total rows: {len(column_data)}\n")
+        print("\n" + "="*120)
+        print("📊 DATA FROM GOOGLE SHEET (7 COLUMNS)")
+        print("="*120)
+        print(f"Total rows: {len(rows_data)}\n")
 
-        for i, value in enumerate(column_data, 1):
-            print(f"  [{i}] {value}")
+        # Print header row
+        print(f"{'Row':<5} | {headers[0]:<15} | {headers[1]:<15} | {headers[2]:<10} | {headers[3]:<15} | {headers[4]:<12} | {headers[5]:<12} | {headers[6]:<15}")
+        print("-" * 120)
 
-        print("\n" + "="*60)
+        # Print data rows
+        for i, row in enumerate(rows_data, 1):
+            col1 = str(row[0])[:15] if len(row) > 0 else ""
+            col2 = str(row[1])[:15] if len(row) > 1 else ""
+            col3 = str(row[2])[:10] if len(row) > 2 else ""
+            col4 = str(row[3])[:15] if len(row) > 3 else ""
+            col5 = str(row[4])[:12] if len(row) > 4 else ""
+            col6 = str(row[5])[:12] if len(row) > 5 else ""
+            col7 = str(row[6])[:15] if len(row) > 6 else ""
+            print(f"{i:<5} | {col1:<15} | {col2:<15} | {col3:<10} | {col4:<15} | {col5:<12} | {col6:<12} | {col7:<15}")
+
+        print("\n" + "="*120)
         print("📋 JSON FORMAT")
-        print("="*60)
+        print("="*120)
         # Output as JSON for programmatic use
-        print(json.dumps(column_data, indent=2))
+        data_json = [
+            {
+                "First Name": row[0] if len(row) > 0 else "",
+                "Last Name": row[1] if len(row) > 1 else "",
+                "Id": row[2] if len(row) > 2 else "",
+                "City": row[3] if len(row) > 3 else "",
+                "Latitude": row[4] if len(row) > 4 else "",
+                "Longitude": row[5] if len(row) > 5 else "",
+                "Temperature": row[6] if len(row) > 6 else ""
+            }
+            for row in rows_data
+        ]
+        print(json.dumps(data_json, indent=2))
 
     except FileNotFoundError as e:
-        print(f"❌ File Error: {str(e)}", file=sys.stderr)
-        print(f"\nMake sure the service account JSON file exists at: {service_account_path}", file=sys.stderr)
-        sys.exit(1)
-    except ValueError as e:
-        print(f"❌ Configuration Error: {str(e)}", file=sys.stderr)
-        if "missing required fields" in str(e).lower():
-            print("\nYour service account JSON is missing required fields.", file=sys.stderr)
-            print("Download a new service account key from Google Cloud Console.", file=sys.stderr)
-        elif "not valid json" in str(e).lower():
-            print(f"\nThe file at {service_account_path} is not valid JSON.", file=sys.stderr)
-            print("Make sure it's a proper JSON file.", file=sys.stderr)
-        sys.exit(1)
-    except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}", file=sys.stderr)
-        print("\nHow to fix:", file=sys.stderr)
-        print("1. Open your service account JSON file", file=sys.stderr)
-        print("2. Find the 'client_email' field", file=sys.stderr)
-        print("3. Share your Google Sheet with that email address", file=sys.stderr)
-        print("4. Make sure it has at least 'Viewer' access", file=sys.stderr)
-        sys.exit(1)
-    except (IOError, RuntimeError) as e:
-        print(f"❌ Runtime Error: {str(e)}", file=sys.stderr)
-        print("\nDebugging tips:", file=sys.stderr)
-        print("- Check your internet connection", file=sys.stderr)
-        print("- Verify the spreadsheet ID is correct", file=sys.stderr)
-        print("- Check that the spreadsheet is not locked or archived", file=sys.stderr)
-        if "DEBUG" in os.environ:
-            print("\nFull traceback:", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"❌ Unexpected Error: {str(e)}", file=sys.stderr)
-        print("\nPlease report this issue with the following details:", file=sys.stderr)
+        print(f"\n❌ FILE NOT FOUND ERROR", file=sys.stderr)
+        print(f"━" * 80, file=sys.stderr)
+        print(f"Message: {str(e)}", file=sys.stderr)
+        print(f"\nLookup Path: {service_account_path}", file=sys.stderr)
+        print(f"\nHow to fix:", file=sys.stderr)
+        print(f"1. Verify the service account JSON file exists", file=sys.stderr)
+        print(f"2. Check the file path is correct", file=sys.stderr)
+        print(f"3. Ensure the path is absolute (not relative)", file=sys.stderr)
+        print(f"━" * 80 + "\n", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
+    except ValueError as e:
+        print(f"\n❌ CONFIGURATION ERROR", file=sys.stderr)
+        print(f"━" * 80, file=sys.stderr)
+        print(f"Message: {str(e)}", file=sys.stderr)
+        error_msg = str(e).lower()
+        if "missing required fields" in error_msg:
+            print(f"\nIssue: Service account JSON is missing required fields", file=sys.stderr)
+            print(f"How to fix:", file=sys.stderr)
+            print(f"1. Go to Google Cloud Console", file=sys.stderr)
+            print(f"2. Create a new service account key (JSON format)", file=sys.stderr)
+            print(f"3. Replace your current key file", file=sys.stderr)
+        elif "not valid json" in error_msg:
+            print(f"\nIssue: The JSON file is malformed", file=sys.stderr)
+            print(f"How to fix:", file=sys.stderr)
+            print(f"1. Open {service_account_path}", file=sys.stderr)
+            print(f"2. Validate it's proper JSON (use jsonlint.com)", file=sys.stderr)
+            print(f"3. Download a fresh key from Google Cloud Console", file=sys.stderr)
+        elif "spreadsheet id" in error_msg:
+            print(f"\nIssue: Invalid or empty spreadsheet ID", file=sys.stderr)
+            print(f"Current ID: {spreadsheet_id}", file=sys.stderr)
+            print(f"How to fix: Get the ID from your sheet URL: https://docs.google.com/spreadsheets/d/{{ID}}/edit", file=sys.stderr)
+        print(f"━" * 80 + "\n", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+    except PermissionError as e:
+        print(f"\n❌ PERMISSION DENIED ERROR", file=sys.stderr)
+        print(f"━" * 80, file=sys.stderr)
+        print(f"Message: {str(e)}", file=sys.stderr)
+        print(f"\nThe service account doesn't have access to the spreadsheet.", file=sys.stderr)
+        print(f"\nHow to fix:", file=sys.stderr)
+        print(f"1. Open {service_account_path}", file=sys.stderr)
+        print(f"2. Find the 'client_email' field (looks like: xxx@xxx.iam.gserviceaccount.com)", file=sys.stderr)
+        print(f"3. Copy the email address", file=sys.stderr)
+        print(f"4. Open your Google Sheet", file=sys.stderr)
+        print(f"5. Click 'Share' and paste the email", file=sys.stderr)
+        print(f"6. Grant at least 'Viewer' access", file=sys.stderr)
+        print(f"7. Try again", file=sys.stderr)
+        print(f"━" * 80 + "\n", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+    except (IOError, RuntimeError) as e:
+        print(f"\n❌ RUNTIME ERROR", file=sys.stderr)
+        print(f"━" * 80, file=sys.stderr)
+        print(f"Message: {str(e)}", file=sys.stderr)
+        error_msg = str(e).lower()
+        print(f"\nDebugging tips:", file=sys.stderr)
+        if "spreadsheet not found" in error_msg or "404" in error_msg:
+            print(f"- The spreadsheet ID might be wrong: {spreadsheet_id}", file=sys.stderr)
+            print(f"- The spreadsheet might have been deleted", file=sys.stderr)
+        elif "access" in error_msg or "denied" in error_msg or "403" in error_msg:
+            print(f"- The service account may not be shared on the spreadsheet", file=sys.stderr)
+        else:
+            print(f"- Check your internet connection", file=sys.stderr)
+            print(f"- Verify the spreadsheet ID is correct: {spreadsheet_id}", file=sys.stderr)
+            print(f"- Check that the spreadsheet is not locked or archived", file=sys.stderr)
+            print(f"- Ensure the Google Sheets API is enabled in Cloud Console", file=sys.stderr)
+        print(f"\nFull traceback:", file=sys.stderr)
+        print(f"━" * 80 + "\n", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ UNEXPECTED ERROR", file=sys.stderr)
+        print(f"━" * 80, file=sys.stderr)
+        print(f"Exception Type: {type(e).__name__}", file=sys.stderr)
+        print(f"Message: {str(e)}", file=sys.stderr)
+        print(f"\nInputs used:", file=sys.stderr)
+        print(f"  - Spreadsheet ID: {spreadsheet_id}", file=sys.stderr)
+        print(f"  - Service Account Path: {service_account_path}", file=sys.stderr)
+        print(f"\nFull traceback for debugging:", file=sys.stderr)
+        print(f"━" * 80 + "\n", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
 
 
 if __name__ == '__main__':

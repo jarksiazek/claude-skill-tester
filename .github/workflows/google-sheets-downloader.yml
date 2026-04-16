@@ -4,17 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       spreadsheet_id:
-        description: 'Google Sheet ID (from the URL)'
+        description: 'Google Sheet ID (from the URL): https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit'
         required: true
         type: string
-      output_format:
-        description: 'Output format'
+      service_account_path:
+        description: 'Optional path to service account JSON (defaults to /tmp/service-account.json from secret)'
         required: false
-        default: 'json'
-        type: choice
-        options:
-          - json
-          - csv
+        type: string
   schedule:
     # Run daily at 08:00 UTC
     - cron: '0 8 * * *'
@@ -43,7 +39,7 @@ jobs:
           echo "$SERVICE_ACCOUNT_JSON" > /tmp/service-account.json
           echo "✅ Service account file created"
 
-      - name: Download from Google Sheet
+      - name: Download from Google Sheet (7 columns)
         id: download
         run: |
           SHEET_ID="${{ github.event.inputs.spreadsheet_id }}"
@@ -60,8 +56,9 @@ jobs:
           fi
 
           echo "📊 Downloading from sheet: $SHEET_ID"
+          echo "📋 Extracting 7 columns: First Name, Last Name, Id, City, Latitude, Longitude, Temperature"
 
-          # Run the skill with venv
+          # Run the skill with venv (extracts columns A through G)
           ./.claude/skills/google-sheets-downloader/run.sh "$SHEET_ID" "/tmp/service-account.json" 2>&1 | tee /tmp/output.txt
 
           # Extract JSON output for next steps
