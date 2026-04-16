@@ -1,0 +1,28 @@
+{
+  "name": "google-sheets-downloader",
+  "version": "1.0.0",
+  "description": "Download data from a Google Sheet and extract the first column",
+  "entryPoint": "run.sh",
+  "args": [
+    {
+      "name": "spreadsheet_id",
+      "description": "The ID of the Google Sheet",
+      "required": true,
+      "position": 1
+    },
+    {
+      "name": "service_account_path",
+      "description": "Path to the service account JSON file",
+      "required": true,
+      "position": 2
+    }
+  ],
+  "environment": {
+    "auto_venv": true,
+    "dependencies": [
+      "google-auth-oauthlib",
+      "google-auth-httplib2",
+      "google-api-python-client"
+    ]
+  }
+}
