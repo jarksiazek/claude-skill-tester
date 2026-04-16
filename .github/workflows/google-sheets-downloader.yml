@@ -103,52 +103,40 @@ jobs:
 
           echo "✅ Temperature update completed"
 
+          # Extract post-update JSON snapshot
+          mkdir -p workflow-outputs
+          grep -A 100 "📋 JSON FORMAT (Updated Data)" /tmp/temperature-output.txt | tail -n +2 > workflow-outputs/post-update-data.json
+          echo "📁 Post-update snapshot saved"
+
       - name: Save results to file
         run: |
           mkdir -p workflow-outputs
           cp /tmp/output.txt workflow-outputs/download-results.txt
 
-          # Also save the JSON part
-          tail -20 /tmp/output.txt | grep -A 100 "📋 JSON FORMAT" | tail -n +2 > workflow-outputs/data.json
+          # Save pre-update JSON snapshot (state before temperature update)
+          tail -20 /tmp/output.txt | grep -A 100 "📋 JSON FORMAT" | tail -n +2 > workflow-outputs/pre-update-data.json
+
+          # Keep data.json as canonical output for artifact consumers
+          cp workflow-outputs/pre-update-data.json workflow-outputs/data.json
 
           echo "📁 Results saved to workflow-outputs/"
 
-      - name: Download previous artifact
-        continue-on-error: true
+      - name: Compare pre-update vs post-update
+        if: steps.check_key.outputs.has_key == 'true'
         run: |
-          echo "📥 Attempting to download previous data artifact..."
-          mkdir -p previous-artifact
+          echo "🔄 Comparing pre-update vs post-update data..."
 
-          # Try to download the latest artifact from previous runs
-          gh run list --workflow google-sheets-downloader.yml --limit 1 --json databaseId -q ".[0].databaseId" > /tmp/latest_run.txt 2>/dev/null || true
-
-          if [ -s /tmp/latest_run.txt ]; then
-            LATEST_RUN=$(cat /tmp/latest_run.txt)
-            gh run download "$LATEST_RUN" -n google-sheets-data -D previous-artifact 2>/dev/null || true
-          fi
-
-          if [ -f "previous-artifact/data.json" ]; then
-            echo "✅ Previous data found"
-            cp previous-artifact/data.json workflow-outputs/previous-data.json
-          else
-            echo "ℹ️  No previous data found (first run or artifact expired)"
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Compare with previous data
-        run: |
-          echo "🔄 Comparing current data with previous version..."
-
-          if [ -f "workflow-outputs/previous-data.json" ]; then
+          if [ -f "workflow-outputs/post-update-data.json" ]; then
             echo "📊 Running comparison..."
-            python3 .claude/skills/google-sheets-downloader/scripts/compare_changes.py workflow-outputs/data.json workflow-outputs/previous-data.json > /tmp/comparison.txt 2>&1
+            python3 .claude/skills/google-sheets-downloader/scripts/compare_changes.py \
+              workflow-outputs/post-update-data.json \
+              workflow-outputs/pre-update-data.json \
+              > /tmp/comparison.txt 2>&1
             cat /tmp/comparison.txt
 
-            # Save comparison results
             cp /tmp/comparison.txt workflow-outputs/comparison-results.txt
           else
-            echo "ℹ️  No previous data available for comparison (first run)"
+            echo "ℹ️  Post-update data not found — comparison skipped"
           fi
 
       - name: Display summary
@@ -158,9 +146,8 @@ jobs:
           echo "**Spreadsheet ID:** ${{ github.event.inputs.spreadsheet_id }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Show comparison results if available
           if [ -f "workflow-outputs/comparison-results.txt" ]; then
-            echo "### 🔄 Changes Detected" >> $GITHUB_STEP_SUMMARY
+            echo "### 🌡️ Temperature Changes This Run" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             cat workflow-outputs/comparison-results.txt >> $GITHUB_STEP_SUMMARY
@@ -168,7 +155,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
-          echo "### Data Retrieved" >> $GITHUB_STEP_SUMMARY
+          echo "### Data Retrieved (Pre-Update)" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
           cat workflow-outputs/data.json >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
