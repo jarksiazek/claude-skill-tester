@@ -11,6 +11,10 @@ on:
         description: 'Optional path to service account JSON (defaults to /tmp/service-account.json from secret)'
         required: false
         type: string
+      openweathermap_api_key:
+        description: 'Optional OpenWeatherMap API key for temperature updates (defaults to OPENWEATHERMAP_API_KEY secret)'
+        required: false
+        type: string
   schedule:
     # Run daily at 08:00 UTC
     - cron: '0 8 * * *'
@@ -38,6 +42,20 @@ jobs:
           fi
           echo "$SERVICE_ACCOUNT_JSON" > /tmp/service-account.json
           echo "✅ Service account file created"
+
+      - name: Check if API key is available
+        id: check_key
+        run: |
+          API_KEY="${{ github.event.inputs.openweathermap_api_key }}"
+          if [ -z "$API_KEY" ] && [ -n "${{ secrets.OPENWEATHERMAP_API_KEY }}" ]; then
+            API_KEY="${{ secrets.OPENWEATHERMAP_API_KEY }}"
+          fi
+          if [ -z "$API_KEY" ]; then
+            echo "has_key=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_key=true" >> $GITHUB_OUTPUT
+            echo "api_key=$API_KEY" >> $GITHUB_OUTPUT
+          fi
 
       - name: Download from Google Sheet (7 columns)
         id: download
@@ -68,6 +86,22 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
           echo "✅ Download completed"
+
+      - name: Update temperatures via OpenWeatherMap
+        if: steps.check_key.outputs.has_key == 'true'
+        run: |
+          SHEET_ID="${{ github.event.inputs.spreadsheet_id }}"
+
+          if [ -z "$SHEET_ID" ]; then
+            SHEET_ID="${{ env.DEFAULT_SPREADSHEET_ID }}"
+          fi
+
+          echo "🌡️  Updating temperature column with OpenWeatherMap API..."
+
+          # Run the skill with OpenWeatherMap API key
+          ./.claude/skills/google-sheets-downloader/run.sh "$SHEET_ID" "/tmp/service-account.json" "${{ steps.check_key.outputs.api_key }}" 2>&1 | tee /tmp/temperature-output.txt
+
+          echo "✅ Temperature update completed"
 
       - name: Save results to file
         run: |

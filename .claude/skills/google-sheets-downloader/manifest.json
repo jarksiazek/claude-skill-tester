@@ -1,7 +1,7 @@
 {
   "name": "google-sheets-downloader",
-  "version": "1.0.0",
-  "description": "Download data from a Google Sheet and extract the first column",
+  "version": "1.1.0",
+  "description": "Download data from a Google Sheet and extract 7 columns (First Name, Last Name, Id, City, Latitude, Longitude, Temperature). Optionally update the Temperature column using OpenWeatherMap API.",
   "entryPoint": "run.sh",
   "args": [
     {
@@ -15,6 +15,12 @@
       "description": "Path to the service account JSON file",
       "required": true,
       "position": 2
+    },
+    {
+      "name": "openweathermap_api_key",
+      "description": "OpenWeatherMap API key (optional). If provided, updates the Temperature column (G) with live weather data",
+      "required": false,
+      "position": 3
     }
   ],
   "environment": {
@@ -22,7 +28,8 @@
     "dependencies": [
       "google-auth-oauthlib",
       "google-auth-httplib2",
-      "google-api-python-client"
+      "google-api-python-client",
+      "requests"
     ]
   }
 }

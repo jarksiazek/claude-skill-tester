@@ -1,46 +1,70 @@
 ---
 name: google-sheets-downloader
-description: Download data from a Google Sheet and extract 7 columns (First Name, Last Name, Id, City, Latitude, Longitude, Temperature). Use this skill whenever the user needs to fetch data from Google Sheets, wants to read spreadsheet values into JSON, or needs to integrate Google Sheets data into their workflow. Accepts two arguments - the spreadsheet ID and the path to a Google service account JSON file for authentication.
+description: Download data from a Google Sheet and extract 7 columns (First Name, Last Name, Id, City, Latitude, Longitude, Temperature). Optionally update the Temperature column using OpenWeatherMap API. Use this skill whenever the user needs to fetch data from Google Sheets, wants to read spreadsheet values into JSON, or needs to integrate Google Sheets data into their workflow. Accepts three arguments - the spreadsheet ID, the path to a Google service account JSON file for authentication, and optionally the OpenWeatherMap API key for temperature updates.
 compatibility: Python 3.7+
 ---
 
 # Google Sheets Downloader Skill
 
-This skill downloads data from a Google Sheet and extracts 7 columns (A through G) from the first sheet, returning it as JSON with structured data.
+This skill downloads data from a Google Sheet and extracts 7 columns (A through G) from the first sheet, returning it as JSON with structured data. Optionally, it can update the Temperature column (G) with live weather data from OpenWeatherMap API.
 
 ## What it does
 
+**Download Mode (default):**
 - Authenticates with Google Sheets API using a service account
 - Fetches the first sheet from a specified Google Sheet
 - Extracts all values from columns A through G (First Name, Last Name, Id, City, Latitude, Longitude, Temperature)
 - Prints the data in a readable table format to the console with row numbers
 - Returns the data as JSON for programmatic use with named fields
-- Prints errors clearly if something goes wrong
+
+**Temperature Update Mode (with OpenWeatherMap API key):**
+- Same as above, plus:
+- Fetches the current temperature for each city using OpenWeatherMap API
+- Updates column G (Temperature) in the spreadsheet with live weather data
+- Prints a city-to-temperature mapping for verification
+- Errors are handled gracefully (missing cities return "N/A")
 
 ## How to use it
 
-The skill requires two arguments:
+The skill requires two arguments and accepts an optional third:
 
 1. **Spreadsheet ID** - The ID of your Google Sheet (found in the URL: `https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit`)
 2. **Service Account JSON Path** - Full path to your Google service account JSON file (e.g., `/path/to/service-account.json`)
+3. **OpenWeatherMap API Key** (optional) - Your OpenWeatherMap API key to enable temperature updates
 
 ### Example usage
 
+**Download mode (no temperature updates):**
 ```
 Download 7 columns from my Google Sheet with ID "1a2b3c4d5e6f" 
 using the service account at "/Users/me/credentials/google-key.json"
 ```
 
+**Temperature update mode:**
+```
+Download 7 columns and update temperatures from my Google Sheet with ID "1a2b3c4d5e6f" 
+using the service account at "/Users/me/credentials/google-key.json" 
+and my OpenWeatherMap API key "your-api-key-here"
+```
+
 ## How it works
 
-The skill will:
-
+**Download mode:**
 1. Load the service account credentials from the JSON file
 2. Authenticate with Google Sheets API
 3. Fetch values from the first sheet
 4. Extract columns A through G (First Name, Last Name, Id, City, Latitude, Longitude, Temperature)
 5. Return as JSON array with named fields
 6. If errors occur, print the error cause clearly
+
+**Temperature update mode (when API key is provided):**
+1. Same as above steps 1-3
+2. For each data row, read the City name (column D)
+3. Call OpenWeatherMap Current Weather API for that city
+4. Extract the temperature value in Celsius
+5. Update column G (Temperature) in the spreadsheet using batch update
+6. Return updated JSON with fresh temperature data
+7. Print city-to-temperature mapping for verification
 
 ## Output format
 
@@ -122,9 +146,23 @@ To use this skill, you need a Google service account:
 4. Go to "Credentials" → "Create Credentials" → "Service Account"
 5. Create a key in JSON format
 6. Share your Google Sheet with the service account email (found in the JSON file)
-7. Use the JSON file path with this skill
+7. Grant the service account **Editor** access (needed for temperature updates)
+8. Use the JSON file path with this skill
 
 The service account email will look like: `my-sa-123@my-project.iam.gserviceaccount.com`
+
+## Setup: Getting an OpenWeatherMap API key (optional)
+
+To enable temperature updates, you need a free OpenWeatherMap API key:
+
+1. Go to [OpenWeatherMap API](https://openweathermap.org/api)
+2. Sign up for a free account
+3. Go to your API keys section
+4. Copy your default API key
+5. Use it as the third argument when running the skill
+6. For GitHub Actions, add it as a repository secret named `OPENWEATHERMAP_API_KEY`
+
+The free tier allows up to 1,000 calls/day, which is plenty for daily updates.
 
 ## Automatic Dependency Management
 

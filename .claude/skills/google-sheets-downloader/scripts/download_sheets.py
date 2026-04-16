@@ -138,6 +138,10 @@ def main():
     try:
         rows_data = download_seven_columns(spreadsheet_id, service_account_path)
 
+        # Skip the first row (header row) if there's more than one row
+        if len(rows_data) > 1:
+            rows_data = rows_data[1:]
+
         # Define column headers
         headers = ["First Name", "Last Name", "Id", "City", "Latitude", "Longitude", "Temperature"]
 
