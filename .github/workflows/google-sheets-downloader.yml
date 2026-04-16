@@ -113,12 +113,61 @@ jobs:
 
           echo "📁 Results saved to workflow-outputs/"
 
+      - name: Download previous artifact
+        continue-on-error: true
+        run: |
+          echo "📥 Attempting to download previous data artifact..."
+          mkdir -p previous-artifact
+
+          # Try to download the latest artifact from previous runs
+          gh run list --workflow google-sheets-downloader.yml --limit 1 --json databaseId -q ".[0].databaseId" > /tmp/latest_run.txt 2>/dev/null || true
+
+          if [ -s /tmp/latest_run.txt ]; then
+            LATEST_RUN=$(cat /tmp/latest_run.txt)
+            gh run download "$LATEST_RUN" -n google-sheets-data -D previous-artifact 2>/dev/null || true
+          fi
+
+          if [ -f "previous-artifact/data.json" ]; then
+            echo "✅ Previous data found"
+            cp previous-artifact/data.json workflow-outputs/previous-data.json
+          else
+            echo "ℹ️  No previous data found (first run or artifact expired)"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Compare with previous data
+        run: |
+          echo "🔄 Comparing current data with previous version..."
+
+          if [ -f "workflow-outputs/previous-data.json" ]; then
+            echo "📊 Running comparison..."
+            python3 .claude/skills/google-sheets-downloader/scripts/compare_changes.py workflow-outputs/data.json workflow-outputs/previous-data.json > /tmp/comparison.txt 2>&1
+            cat /tmp/comparison.txt
+
+            # Save comparison results
+            cp /tmp/comparison.txt workflow-outputs/comparison-results.txt
+          else
+            echo "ℹ️  No previous data available for comparison (first run)"
+          fi
+
       - name: Display summary
         run: |
           echo "## 📊 Google Sheets Download Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Spreadsheet ID:** ${{ github.event.inputs.spreadsheet_id }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Show comparison results if available
+          if [ -f "workflow-outputs/comparison-results.txt" ]; then
+            echo "### 🔄 Changes Detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat workflow-outputs/comparison-results.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "### Data Retrieved" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
           cat workflow-outputs/data.json >> $GITHUB_STEP_SUMMARY
