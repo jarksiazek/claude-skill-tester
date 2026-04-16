@@ -1,0 +1,23 @@
+{
+  "skill_name": "google-sheets-downloader",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Download the first column from my Google Sheet. The spreadsheet ID is '1a2b3c4d5e6f' and the service account JSON is at '/path/to/service-account.json'.",
+      "expected_output": "JSON array containing all values from the first column of the first sheet",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I need to get data from a Google Sheet with ID 'invalid-id-xyz' using service account at '/tmp/test-creds.json'. Can you download the first column?",
+      "expected_output": "Error message explaining that the spreadsheet was not found or the ID is invalid",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Extract the first column from spreadsheet ID '1test123test456' using the service account file at '/nonexistent/path/service-account.json'.",
+      "expected_output": "Error message indicating that the service account file was not found",
+      "files": []
+    }
+  ]
+}
