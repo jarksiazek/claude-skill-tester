@@ -1,0 +1,109 @@
+name: Google Sheets Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      spreadsheet_id:
+        description: 'Google Sheet ID (from the URL)'
+        required: true
+        type: string
+      output_format:
+        description: 'Output format'
+        required: false
+        default: 'json'
+        type: choice
+        options:
+          - json
+          - csv
+  schedule:
+    # Run daily at 08:00 UTC
+    - cron: '0 8 * * *'
+
+jobs:
+  download-sheets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Create service account file from secret
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$SERVICE_ACCOUNT_JSON" ]; then
+            echo "❌ Error: GOOGLE_SERVICE_ACCOUNT_JSON secret is not configured"
+            echo "Please add your Google service account JSON as a GitHub secret named 'GOOGLE_SERVICE_ACCOUNT_JSON'"
+            exit 1
+          fi
+          echo "$SERVICE_ACCOUNT_JSON" > /tmp/service-account.json
+          echo "✅ Service account file created"
+
+      - name: Download from Google Sheet
+        id: download
+        run: |
+          SHEET_ID="${{ github.event.inputs.spreadsheet_id }}"
+
+          if [ -z "$SHEET_ID" ]; then
+            # Use default from environment variable if available
+            SHEET_ID="${{ env.DEFAULT_SPREADSHEET_ID }}"
+          fi
+
+          if [ -z "$SHEET_ID" ]; then
+            echo "❌ Error: No spreadsheet ID provided"
+            echo "Please provide spreadsheet_id as workflow input or set DEFAULT_SPREADSHEET_ID environment variable"
+            exit 1
+          fi
+
+          echo "📊 Downloading from sheet: $SHEET_ID"
+
+          # Run the skill with venv
+          ./.claude/skills/google-sheets-downloader/run.sh "$SHEET_ID" "/tmp/service-account.json" 2>&1 | tee /tmp/output.txt
+
+          # Extract JSON output for next steps
+          JSON_DATA=$(tail -20 /tmp/output.txt | grep -A 100 "📋 JSON FORMAT" | tail -n +2)
+          echo "json_output<<EOF" >> $GITHUB_OUTPUT
+          echo "$JSON_DATA" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "✅ Download completed"
+
+      - name: Save results to file
+        run: |
+          mkdir -p workflow-outputs
+          cp /tmp/output.txt workflow-outputs/download-results.txt
+
+          # Also save the JSON part
+          tail -20 /tmp/output.txt | grep -A 100 "📋 JSON FORMAT" | tail -n +2 > workflow-outputs/data.json
+
+          echo "📁 Results saved to workflow-outputs/"
+
+      - name: Display summary
+        run: |
+          echo "## 📊 Google Sheets Download Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Spreadsheet ID:** ${{ github.event.inputs.spreadsheet_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Data Retrieved" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          cat workflow-outputs/data.json >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload results as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-sheets-data
+          path: workflow-outputs/
+          retention-days: 30
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: |
+          rm -f /tmp/service-account.json
+          rm -f /tmp/output.txt
+          echo "✅ Cleaned up sensitive files"
