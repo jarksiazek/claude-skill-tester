@@ -15,9 +15,6 @@ on:
         description: 'Optional OpenWeatherMap API key for temperature updates (defaults to OPENWEATHERMAP_API_KEY secret)'
         required: false
         type: string
-  schedule:
-    # Run daily at 08:00 UTC
-    - cron: '0 8 * * *'
 
 jobs:
   download-sheets:
